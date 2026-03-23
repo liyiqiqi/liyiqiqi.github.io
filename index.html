@@ -7,7 +7,7 @@
   <script>
     // 已内置Deepseek API密钥，无需额外配置
     const DEEPSEEK_API_KEY = "sk-40fcf84ac33f4a8c9ca8e5fa92861b89";
-    // Deepseek官方当前可用全量模型（仅保留你指定的3个）
+    // Deepseek官方当前可用全量模型
     const MODEL_LIST = [
       { label: "Deepseek Chat", value: "deepseek-chat" },
       { label: "Deepseek R1", value: "deepseek-reasoner" },
@@ -16,6 +16,8 @@
     // 访问密码
     const ACCESS_PASSWORD = "330722";
   </script>
+  <!-- 引入前端OCR库，仅用于图片文字提取，不上传任何图片 -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   <style>
     * {
       margin: 0;
@@ -28,36 +30,44 @@
     :root {
       /* 核心色彩 */
       --accent-color: #6366f1;
-      --accent-hover: #4f46e5;
       --text-primary: #f8fafc;
       --text-secondary: #cbd5e1;
       --text-tertiary: #94a3b8;
       --error-color: #ef4444;
+      --success-color: #10b981;
+      --bg-primary: #0f172a;
+      --bg-secondary: #1e293b;
+      --bg-tertiary: #334155;
       
-      /* 液态玻璃分层系统 */
-      --glass-sidebar: rgba(15, 23, 42, 0.7);
-      --glass-chat: rgba(255, 255, 255, 0.06);
-      --glass-input: rgba(15, 23, 42, 0.8);
-      --glass-card: rgba(255, 255, 255, 0.08);
-      --glass-border-weak: rgba(255, 255, 255, 0.08);
-      --glass-border-medium: rgba(255, 255, 255, 0.12);
-      --glass-border-strong: rgba(255, 255, 255, 0.18);
-      
-      /* 模糊层级 */
-      --blur-strong: blur(32px) saturate(180%);
-      --blur-medium: blur(24px) saturate(180%);
-      --blur-weak: blur(20px) saturate(180%);
-      
-      /* 阴影层级 */
-      --shadow-sidebar: 0 8px 32px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      --shadow-input: 0 8px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-      --shadow-chat: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      --shadow-btn: 0 2px 8px rgba(99, 102, 241, 0.3);
-      --shadow-card: 0 20px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+      /* 1:1复刻GlassSurface永久纯透明液态玻璃系统 */
+      --glass-bg: rgba(255, 255, 255, 0);
+      --glass-border: rgba(255, 255, 255, 0.18);
+      --glass-border-highlight: rgba(255, 255, 255, 0.28);
+      --glass-shadow: 
+        0 0 2px 1px rgba(255, 255, 255, 0.15) inset,
+        0 0 10px 4px rgba(255, 255, 255, 0.08) inset,
+        0px 4px 24px rgba(0, 0, 0, 0.15),
+        0px 8px 32px rgba(0, 0, 0, 0.1);
+      --glass-inner-shadow: 
+        inset 0 0 2px 1px rgba(255, 255, 255, 0.12),
+        inset 0 1px 4px rgba(0, 0, 0, 0.15);
+      --blur-strong: blur(24px) saturate(180%);
+      --blur-medium: blur(20px) saturate(180%);
+      --blur-weak: blur(12px) saturate(180%);
       
       /* 过渡动画 */
-      --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-      --transition-normal: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-fast: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+      --transition-bounce: all 0.35s cubic-bezier(0.34, 1.8, 0.64, 1);
+      --transition-snap: all 0.2s cubic-bezier(0.34, 1.2, 0.64, 1);
+
+      /* 开关专属变量 */
+      --switch-width: 50px;
+      --switch-height: 28px;
+      --slider-size: 22px;
+      --slider-max-offset: 22px;
+      --slider-offset: 0px;
+      --slider-width: var(--slider-size);
+      --slider-radius: 50%;
     }
 
     body {
@@ -65,20 +75,18 @@
       height: 100vh;
       height: 100dvh;
       overflow: hidden;
-      background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #2e1065 100%);
+      background: linear-gradient(135deg, var(--bg-primary) 0%, #1e1b4b 100%);
       position: relative;
       color: var(--text-primary);
       line-height: 1.6;
     }
 
-    /* 背景噪点增强玻璃质感 */
-    body::before {
-      content: '';
+    /* ========== 1:1复刻GlassSurface核心SVG滤镜（永久生效） ========== */
+    .global-filters {
       position: absolute;
-      inset: 0;
-      background: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.06'/%3E%3C/svg%3E");
-      pointer-events: none;
-      z-index: 0;
+      width: 0;
+      height: 0;
+      overflow: hidden;
     }
 
     /* ========== 登录页样式 ========== */
@@ -90,7 +98,8 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
-      transition: var(--transition-normal);
+      transition: var(--transition-fast);
+      background: var(--bg-primary);
     }
 
     .login-page.hidden {
@@ -102,17 +111,14 @@
     .login-card {
       width: 100%;
       max-width: 420px;
-      background: var(--glass-card);
-      backdrop-filter: var(--blur-strong);
-      -webkit-backdrop-filter: var(--blur-strong);
-      border: 1px solid var(--glass-border-medium);
+      background: var(--bg-secondary);
       border-radius: 24px;
-      box-shadow: var(--shadow-card);
       padding: 40px 30px;
       display: flex;
       flex-direction: column;
       gap: 24px;
       animation: loginFadeIn 0.4s ease;
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     @keyframes loginFadeIn {
@@ -153,55 +159,105 @@
       gap: 8px;
     }
 
-    .login-input {
-      width: 100%;
-      min-height: 48px;
-      padding: 0 16px;
-      background: var(--glass-input);
-      border: 1px solid var(--glass-border-medium);
-      border-radius: 12px;
-      color: var(--text-primary);
-      font-size: 16px;
-      transition: var(--transition-fast);
-    }
-
-    .login-input:focus {
-      outline: none;
-      border-color: var(--accent-color);
-      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-    }
-
-    .login-input::placeholder {
-      color: var(--text-tertiary);
-    }
-
     .error-tip {
       font-size: 14px;
       color: var(--error-color);
       min-height: 20px;
     }
 
-    .login-btn {
+    /* ========== 核心：输入框（永久保持纯透明液态玻璃） ========== */
+    .glass-input {
+      width: 100%;
+      min-height: 48px;
+      padding: 0 16px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      color: var(--text-primary);
+      font-size: 16px;
+      transition: var(--transition-fast);
+      box-shadow: var(--glass-inner-shadow);
+      filter: url(#glass-filter-hover);
+    }
+
+    /* 聚焦时仅增强高光，不改变玻璃核心 */
+    .glass-input:focus {
+      outline: none;
+      border-color: var(--glass-border-highlight);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05), var(--glass-inner-shadow);
+    }
+
+    .glass-input::placeholder {
+      color: var(--text-tertiary);
+    }
+
+    /* ========== 核心：按钮（永久保持纯透明液态玻璃） ========== */
+    .glass-btn {
       width: 100%;
       min-height: 48px;
       border-radius: 12px;
-      background: var(--accent-color);
-      border: none;
-      color: white;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      border: 1px solid var(--glass-border);
+      color: #ffffff;
       font-size: 16px;
       font-weight: 600;
       cursor: pointer;
       transition: var(--transition-fast);
-      box-shadow: var(--shadow-btn);
+      box-shadow: var(--glass-shadow);
+      filter: url(#glass-filter-hover);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      touch-action: manipulation;
     }
 
-    .login-btn:hover, .login-btn:active {
-      background: var(--accent-hover);
+    /* hover/按下时仅增强质感，不改变玻璃核心 */
+    .glass-btn:hover, .glass-btn:active {
+      border-color: var(--glass-border-highlight);
       transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+    }
+
+    .glass-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+      transform: none;
+      backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      filter: url(#glass-filter-hover);
+    }
+
+    /* ========== 附件加号按钮（和整体风格统一） ========== */
+    .attach-btn {
+      width: 36px;
+      height: 36px;
+      min-height: 36px;
+      min-width: 36px;
+      border-radius: 10px;
+      padding: 0;
+      position: relative;
+    }
+
+    /* 识别成功后的状态标记 */
+    .attach-btn.has-ocr::after {
+      content: '';
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success-color);
+      box-shadow: 0 0 4px var(--success-color);
     }
 
     /* ========== 主界面样式 ========== */
-    /* 侧边栏抽屉 */
+    /* 侧边栏（无玻璃效果） */
     .sidebar {
       position: fixed;
       top: 0;
@@ -209,15 +265,12 @@
       width: 280px;
       height: 100vh;
       height: 100dvh;
-      background: var(--glass-sidebar);
-      backdrop-filter: var(--blur-strong);
-      -webkit-backdrop-filter: var(--blur-strong);
-      border-right: 1px solid var(--glass-border-medium);
-      box-shadow: var(--shadow-sidebar);
+      background: var(--bg-secondary);
+      border-right: 1px solid rgba(255, 255, 255, 0.05);
       display: flex;
       flex-direction: column;
       z-index: 100;
-      transition: var(--transition-normal);
+      transition: var(--transition-fast);
       padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
     }
 
@@ -236,7 +289,7 @@
         z-index: 99;
         opacity: 0;
         pointer-events: none;
-        transition: var(--transition-normal);
+        transition: var(--transition-fast);
       }
       .sidebar-mask.show {
         opacity: 1;
@@ -249,32 +302,7 @@
       padding: 20px 16px;
     }
 
-    .new-chat-btn {
-      width: 100%;
-      min-height: 44px;
-      padding: 0 16px;
-      border-radius: 12px;
-      background: var(--glass-chat);
-      border: 1px solid var(--glass-border-medium);
-      color: var(--text-primary);
-      font-size: 15px;
-      font-weight: 500;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      transition: var(--transition-fast);
-      backdrop-filter: var(--blur-weak);
-      -webkit-backdrop-filter: var(--blur-weak);
-    }
-
-    .new-chat-btn:hover, .new-chat-btn:active {
-      background: rgba(255, 255, 255, 0.1);
-      border-color: var(--glass-border-strong);
-      transform: translateY(-1px);
-    }
-
-    /* 对话列表 */
+    /* 对话列表（无玻璃效果） */
     .chat-list {
       flex: 1;
       overflow-y: auto;
@@ -300,7 +328,7 @@
     }
 
     .chat-item:hover, .chat-item:active {
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--bg-tertiary);
     }
 
     .chat-item.active {
@@ -311,7 +339,7 @@
     /* 侧边栏底部设置 */
     .sidebar-footer {
       padding: 20px 16px;
-      border-top: 1px solid var(--glass-border-weak);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
       display: flex;
       flex-direction: column;
       gap: 20px;
@@ -327,77 +355,167 @@
       gap: 10px;
     }
 
-    /* 模型选择下拉框 */
-    .model-select {
+    /* ========== 核心：自定义下拉框（永久保持纯透明液态玻璃） ========== */
+    .custom-dropdown {
+      position: relative;
       flex: 1;
+      width: 100%;
+    }
+
+    .dropdown-trigger {
+      width: 100%;
       min-height: 36px;
       padding: 0 10px;
-      background: var(--glass-chat);
-      border: 1px solid var(--glass-border-medium);
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      border: 1px solid var(--glass-border);
       border-radius: 8px;
       color: var(--text-primary);
       font-size: 14px;
       cursor: pointer;
       transition: var(--transition-fast);
+      box-shadow: var(--glass-inner-shadow);
+      filter: url(#glass-filter-hover);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      touch-action: manipulation;
     }
 
-    .model-select:focus {
+    /* 打开/聚焦时仅增强高光，不改变玻璃核心 */
+    .dropdown-trigger.open, .dropdown-trigger:focus {
       outline: none;
-      border-color: var(--accent-color);
+      border-color: var(--glass-border-highlight);
     }
 
-    .model-select option {
-      background: #0f172a;
+    .dropdown-trigger .arrow {
+      transition: var(--transition-fast);
+      flex-shrink: 0;
+    }
+
+    .dropdown-trigger.open .arrow {
+      transform: rotate(180deg);
+    }
+
+    /* 下拉面板：永久纯透明液态玻璃 */
+    .dropdown-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 0;
+      right: 0;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-strong) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-strong) url(#glass-surface-filter);
+      border: 1px solid var(--glass-border);
+      border-radius: 12px;
+      box-shadow: var(--glass-shadow);
+      filter: url(#glass-filter-hover);
+      overflow: hidden;
+      z-index: 200;
+      transform-origin: top center;
+      transform: scaleY(0.9);
+      opacity: 0;
+      pointer-events: none;
+      transition: var(--transition-bounce);
+    }
+
+    .dropdown-panel.open {
+      transform: scaleY(1);
+      opacity: 1;
+      pointer-events: all;
+    }
+
+    .dropdown-option {
+      width: 100%;
+      min-height: 40px;
+      padding: 0 12px;
       color: var(--text-primary);
+      font-size: 14px;
+      cursor: pointer;
+      transition: var(--transition-fast);
+      display: flex;
+      align-items: center;
     }
 
-    /* 苹果原生风格开关 */
+    .dropdown-option:hover, .dropdown-option.active {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .dropdown-option.active {
+      font-weight: 500;
+    }
+
+    /* ========== 核心：跟手式开关（仅此处保留原有逻辑，不永久玻璃） ========== */
     .toggle-switch {
       position: relative;
-      width: 50px;
-      height: 28px;
+      width: var(--switch-width);
+      height: var(--switch-height);
       flex-shrink: 0;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      cursor: pointer;
     }
 
     .toggle-switch input {
       opacity: 0;
       width: 0;
       height: 0;
+      position: absolute;
+      pointer-events: none;
     }
 
-    .toggle-slider {
+    /* 开关背景（无玻璃效果） */
+    .toggle-track {
       position: absolute;
-      cursor: pointer;
       inset: 0;
-      background-color: rgba(255, 255, 255, 0.1);
-      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: var(--switch-height);
       transition: var(--transition-fast);
-      border: 1px solid var(--glass-border-weak);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      overflow: hidden;
     }
 
-    .toggle-slider:before {
-      position: absolute;
-      content: "";
-      height: 22px;
-      width: 22px;
-      left: 2px;
-      bottom: 2px;
-      background-color: white;
-      border-radius: 50%;
-      transition: var(--transition-fast);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
-    }
-
-    input:checked + .toggle-slider {
-      background-color: var(--accent-color);
+    /* 开启状态背景（无玻璃效果） */
+    .toggle-switch input:checked + .toggle-track {
+      background: var(--accent-color);
       border-color: var(--accent-color);
     }
 
-    input:checked + .toggle-slider:before {
-      transform: translateX(22px);
+    /* 滑块默认状态：纯白圆形，无任何玻璃效果 */
+    .toggle-slider {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: var(--slider-width);
+      height: var(--slider-size);
+      background: #ffffff;
+      border-radius: var(--slider-radius);
+      transform: translateX(var(--slider-offset));
+      transition: var(--transition-snap);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+      z-index: 10;
+      pointer-events: none;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+      filter: none;
     }
 
-    /* 主内容区 */
+    /* 拖动/按下状态：药丸型+临时液态玻璃效果 */
+    .toggle-switch.is-dragging .toggle-slider {
+      --slider-width: 34px;
+      --slider-radius: calc(var(--switch-height) / 2);
+      transform: translateX(var(--slider-offset));
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-weak) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-weak) url(#glass-surface-filter);
+      box-shadow: var(--glass-shadow);
+      filter: url(#glass-filter-hover);
+      transition: none; /* 滑动时关闭过渡，保证1:1跟手 */
+    }
+
+    /* 主内容区（无玻璃效果） */
     .main-container {
       width: 100vw;
       height: 100vh;
@@ -407,7 +525,7 @@
       position: relative;
       z-index: 10;
       padding-left: 280px;
-      transition: var(--transition-normal);
+      transition: var(--transition-fast);
       opacity: 0;
       pointer-events: none;
     }
@@ -424,7 +542,7 @@
       }
     }
 
-    /* 顶部导航栏 */
+    /* 顶部导航栏（无玻璃效果） */
     .header-bar {
       height: 60px;
       min-height: 60px;
@@ -432,10 +550,8 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      border-bottom: 1px solid var(--glass-border-weak);
-      background: var(--glass-sidebar);
-      backdrop-filter: var(--blur-medium);
-      -webkit-backdrop-filter: var(--blur-medium);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      background: var(--bg-primary);
       padding-top: env(safe-area-inset-top);
     }
 
@@ -455,7 +571,7 @@
     }
 
     .menu-btn:hover, .menu-btn:active {
-      background: rgba(255, 255, 255, 0.08);
+      background: var(--bg-secondary);
     }
 
     /* 桌面端隐藏菜单按钮 */
@@ -475,7 +591,7 @@
       flex: 1;
     }
 
-    /* 聊天内容区 */
+    /* 聊天内容区（无玻璃效果） */
     .chat-container {
       flex: 1;
       overflow-y: auto;
@@ -517,7 +633,7 @@
       text-align: center;
     }
 
-    /* 消息气泡 */
+    /* 消息气泡（无玻璃效果） */
     .message {
       display: flex;
       gap: 12px;
@@ -558,7 +674,7 @@
     }
 
     .message.user .message-avatar {
-      background: rgba(255, 255, 255, 0.15);
+      background: var(--bg-tertiary);
       color: white;
       order: 2;
     }
@@ -574,19 +690,15 @@
     }
 
     .message.assistant .message-content {
-      background: var(--glass-chat);
-      backdrop-filter: var(--blur-weak);
-      -webkit-backdrop-filter: var(--blur-weak);
-      border: 1px solid var(--glass-border-medium);
-      box-shadow: var(--shadow-chat);
+      background: var(--bg-secondary);
       color: var(--text-primary);
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     .message.user .message-content {
-      background: linear-gradient(135deg, var(--accent-color), var(--accent-hover));
+      background: var(--accent-color);
       color: white;
       order: 1;
-      box-shadow: var(--shadow-btn);
     }
 
     /* 消息内容格式化 */
@@ -613,7 +725,7 @@
       border-radius: 10px;
       overflow-x: auto;
       margin: 14px 0;
-      border: 1px solid var(--glass-border-weak);
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     .message-content pre code {
@@ -674,38 +786,43 @@
       }
     }
 
+    /* 输入框外层（无玻璃效果） */
     .input-wrapper {
       max-width: 900px;
       margin: 0 auto;
-      background: var(--glass-input);
-      backdrop-filter: var(--blur-strong);
-      -webkit-backdrop-filter: var(--blur-strong);
-      border: 1px solid var(--glass-border-medium);
+      background: transparent;
       border-radius: 18px;
-      box-shadow: var(--shadow-input);
-      padding: 12px 16px;
       display: flex;
       flex-direction: column;
       gap: 8px;
       transition: var(--transition-fast);
     }
 
-    .input-wrapper:focus-within {
-      border-color: var(--accent-color);
-      box-shadow: 0 8px 40px rgba(99, 102, 241, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.08);
-    }
-
+    /* 提问输入框（永久保持纯透明液态玻璃） */
     #message-input {
       width: 100%;
-      background: transparent;
-      border: none;
-      outline: none;
+      min-height: 24px;
+      max-height: 180px;
+      padding: 14px 16px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      -webkit-backdrop-filter: var(--blur-medium) url(#glass-surface-filter);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
       color: var(--text-primary);
       font-size: 15px;
       line-height: 1.6;
       resize: none;
-      max-height: 180px;
-      min-height: 24px;
+      outline: none;
+      transition: var(--transition-fast);
+      box-shadow: var(--glass-inner-shadow);
+      filter: url(#glass-filter-hover);
+    }
+
+    /* 聚焦时仅增强高光，不改变玻璃核心 */
+    #message-input:focus {
+      border-color: var(--glass-border-highlight);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05), var(--glass-inner-shadow);
     }
 
     #message-input::placeholder {
@@ -716,31 +833,19 @@
       display: flex;
       align-items: center;
       justify-content: flex-end;
+      gap: 10px;
     }
 
     .send-btn {
       min-height: 36px;
       padding: 8px 20px;
-      border-radius: 10px;
-      background: var(--accent-color);
-      border: none;
-      color: white;
-      font-size: 15px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: var(--transition-fast);
-      box-shadow: var(--shadow-btn);
+      width: auto;
+      min-width: 80px;
     }
 
-    .send-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-      box-shadow: none;
-    }
-
-    .send-btn:hover:not(:disabled), .send-btn:active:not(:disabled) {
-      background: var(--accent-hover);
-      transform: translateY(-1px);
+    /* 隐藏的图片上传input */
+    #image-upload {
+      display: none;
     }
 
     /* 滚动条美化 */
@@ -761,9 +866,98 @@
     ::-webkit-scrollbar-thumb:hover {
       background: rgba(255, 255, 255, 0.25);
     }
+
+    /* Toast提示样式 */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: var(--blur-medium);
+      -webkit-backdrop-filter: var(--blur-medium);
+      color: var(--text-primary);
+      font-size: 14px;
+      z-index: 9999;
+      opacity: 0;
+      pointer-events: none;
+      transition: var(--transition-fast);
+    }
+
+    .toast.show {
+      opacity: 1;
+      pointer-events: all;
+      transform: translateX(-50%) translateY(0);
+    }
   </style>
 </head>
 <body>
+  <!-- 1:1复刻GlassSurface核心SVG滤镜（永久生效） -->
+  <svg class="global-filters" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <!-- 核心玻璃滤镜：完全复刻GlassSurface的feDisplacementMap逻辑 -->
+      <filter id="glass-surface-filter" colorInterpolationFilters="sRGB" x="0%" y="0%" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="3" result="noise" seed="2" />
+        
+        <!-- RGB三通道独立位移，复刻原版色散效果 -->
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="-180" xChannelSelector="R" yChannelSelector="G" result="dispRed" />
+        <feColorMatrix
+          in="dispRed"
+          type="matrix"
+          values="1 0 0 0 0
+                  0 0 0 0 0
+                  0 0 0 0 0
+                  0 0 0 1 0"
+          result="red"
+        />
+
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="-170" xChannelSelector="G" yChannelSelector="B" result="dispGreen" />
+        <feColorMatrix
+          in="dispGreen"
+          type="matrix"
+          values="0 0 0 0 0
+                  0 1 0 0 0
+                  0 0 0 0 0
+                  0 0 0 1 0"
+          result="green"
+        />
+
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="-160" xChannelSelector="B" yChannelSelector="R" result="dispBlue" />
+        <feColorMatrix
+          in="dispBlue"
+          type="matrix"
+          values="0 0 0 0 0
+                  0 0 0 0 0
+                  0 0 1 0 0
+                  0 0 0 1 0"
+          result="blue"
+        />
+
+        <!-- 通道混合，复刻原版screen混合模式 -->
+        <feBlend in="red" in2="green" mode="screen" result="rg" />
+        <feBlend in="rg" in2="blue" mode="screen" result="output" />
+        <feGaussianBlur in="output" stdDeviation="0.7" />
+      </filter>
+
+      <!-- 增强色散滤镜：永久叠加，提升质感 -->
+      <filter id="glass-filter-hover" colorInterpolationFilters="sRGB" x="-20%" y="-20%" width="140%" height="140%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.015" numOctaves="3" result="noise" seed="1" />
+        <feDisplacementMap in="SourceGraphic" in2="noise" scale="2" xChannelSelector="R" yChannelSelector="G" result="disp" />
+        <feGaussianBlur in="disp" stdDeviation="0.3" result="blur" />
+        <feComposite in="blur" in2="SourceGraphic" operator="over" result="output" />
+      </filter>
+    </defs>
+  </svg>
+
+  <!-- Toast提示 -->
+  <div class="toast" id="toast"></div>
+
+  <!-- 隐藏的图片上传input -->
+  <input type="file" id="image-upload" accept="image/*" />
+
   <!-- ========== 登录页 ========== -->
   <div class="login-page" id="login-page">
     <div class="login-card">
@@ -772,10 +966,10 @@
         <p>请输入访问密码进入系统</p>
       </div>
       <div class="login-input-group">
-        <input type="password" class="login-input" id="password-input" placeholder="请输入访问密码">
+        <input type="password" class="glass-input" id="password-input" placeholder="请输入访问密码">
         <div class="error-tip" id="error-tip"></div>
       </div>
-      <button class="login-btn" id="login-btn">点击进入</button>
+      <button class="glass-btn" id="login-btn">点击进入</button>
     </div>
   </div>
 
@@ -786,7 +980,7 @@
   <!-- 侧边栏 -->
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <button class="new-chat-btn" id="new-chat-btn">
+      <button class="glass-btn" id="new-chat-btn">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <line x1="12" y1="5" x2="12" y2="19"></line>
           <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -796,24 +990,35 @@
     </div>
     <div class="chat-list" id="chat-list"></div>
     <div class="sidebar-footer">
-      <!-- 模型切换 -->
+      <!-- 自定义永久液态玻璃下拉框 -->
       <div class="setting-item">
         <span>模型选择</span>
-        <select class="model-select" id="model-select"></select>
+        <div class="custom-dropdown" id="model-dropdown">
+          <div class="dropdown-trigger" id="dropdown-trigger">
+            <span id="selected-model-text">Deepseek Chat</span>
+            <svg class="arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </div>
+          <div class="dropdown-panel" id="dropdown-panel">
+            <div class="dropdown-list" id="dropdown-list"></div>
+          </div>
+        </div>
       </div>
-      <!-- 深度思索开关 -->
+      <!-- 跟手式开关（仅此处保留原有逻辑） -->
       <div class="setting-item">
         <span>深度思索</span>
-        <label class="toggle-switch">
-          <input type="checkbox" id="reasoning-switch">
+        <label class="toggle-switch" id="reasoning-switch">
+          <input type="checkbox" id="reasoning-input">
+          <span class="toggle-track"></span>
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <!-- 联网搜索开关 -->
       <div class="setting-item">
         <span>联网搜索</span>
-        <label class="toggle-switch">
-          <input type="checkbox" id="online-search-switch">
+        <label class="toggle-switch" id="online-search-switch">
+          <input type="checkbox" id="online-search-input">
+          <span class="toggle-track"></span>
           <span class="toggle-slider"></span>
         </label>
       </div>
@@ -847,7 +1052,14 @@
       <div class="input-wrapper">
         <textarea id="message-input" placeholder="输入消息..." rows="1"></textarea>
         <div class="input-footer">
-          <button class="send-btn" id="send-btn" disabled>发送</button>
+          <!-- 加号附件按钮 -->
+          <button class="glass-btn attach-btn" id="attach-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button class="glass-btn send-btn" id="send-btn" disabled>发送</button>
         </div>
       </div>
     </div>
@@ -860,6 +1072,10 @@
     let currentChatMessages = [];
     let isStreaming = false;
     let abortController = null;
+    let selectedModel = localStorage.getItem('deepseek_selected_model') || MODEL_LIST[0].value;
+    let dropdownOpen = false;
+    // 图片OCR提取的文字（全程不显示在界面）
+    let selectedImageOCR = '';
 
     // DOM元素
     const loginPageEl = document.getElementById('login-page');
@@ -876,40 +1092,284 @@
     const messageInputEl = document.getElementById('message-input');
     const sendBtnEl = document.getElementById('send-btn');
     const newChatBtnEl = document.getElementById('new-chat-btn');
-    const modelSelectEl = document.getElementById('model-select');
+    // 附件相关元素
+    const attachBtnEl = document.getElementById('attach-btn');
+    const imageUploadEl = document.getElementById('image-upload');
+    const toastEl = document.getElementById('toast');
+    // 开关元素
     const reasoningSwitchEl = document.getElementById('reasoning-switch');
+    const reasoningInputEl = document.getElementById('reasoning-input');
     const onlineSearchSwitchEl = document.getElementById('online-search-switch');
+    const onlineSearchInputEl = document.getElementById('online-search-input');
+    // 自定义下拉元素
+    const modelDropdownEl = document.getElementById('model-dropdown');
+    const dropdownTriggerEl = document.getElementById('dropdown-trigger');
+    const dropdownPanelEl = document.getElementById('dropdown-panel');
+    const dropdownListEl = document.getElementById('dropdown-list');
+    const selectedModelTextEl = document.getElementById('selected-model-text');
 
     // 初始化
     init();
 
     function init() {
-      // 初始化模型选择下拉框
-      initModelSelect();
+      // 初始化跟手式开关
+      initDraggableSwitches();
+      // 初始化自定义下拉框
+      initCustomDropdown();
+      // 初始化附件OCR功能
+      initAttachFunction();
       // 检查登录状态
       checkLoginStatus();
       // 绑定登录事件
       bindLoginEvent();
       // 绑定主界面事件
       bindMainEvent();
+      // 点击页面其他地方关闭下拉框
+      document.addEventListener('click', (e) => {
+        if (!modelDropdownEl.contains(e.target) && dropdownOpen) {
+          toggleDropdown(false);
+        }
+      });
     }
 
-    // 初始化模型选择器
-    function initModelSelect() {
-      // 渲染所有模型选项
+    // ========== Toast提示工具 ==========
+    function showToast(text, duration = 2000) {
+      toastEl.textContent = text;
+      toastEl.classList.add('show');
+      setTimeout(() => {
+        toastEl.classList.remove('show');
+      }, duration);
+    }
+
+    // ========== 附件OCR功能初始化 ==========
+    function initAttachFunction() {
+      // 加号按钮点击触发文件选择
+      attachBtnEl.addEventListener('click', () => {
+        imageUploadEl.click();
+      });
+
+      // 选择图片后触发OCR识别
+      imageUploadEl.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // 验证文件类型
+        if (!file.type.startsWith('image/')) {
+          showToast('请选择有效的图片文件');
+          return;
+        }
+
+        // 重置之前的OCR内容
+        selectedImageOCR = '';
+        attachBtnEl.classList.remove('has-ocr');
+
+        showToast('正在识别图片文字...');
+
+        try {
+          // 加载OCR识别器，支持中英文
+          const worker = await Tesseract.createWorker('chi_sim+eng');
+          const result = await worker.recognize(file);
+          await worker.terminate();
+
+          // 提取识别的文字
+          const ocrText = result.data.text.trim();
+          
+          if (!ocrText) {
+            showToast('未识别到图片中的文字');
+            // 清空文件选择
+            imageUploadEl.value = '';
+            return;
+          }
+
+          // 保存OCR内容，全程不显示
+          selectedImageOCR = ocrText;
+          attachBtnEl.classList.add('has-ocr');
+          showToast('图片文字识别成功，已随消息发送');
+
+          // 发送按钮可用状态更新
+          handleInputChange();
+
+        } catch (error) {
+          console.error('OCR识别失败', error);
+          showToast('图片识别失败，请重新选择');
+          imageUploadEl.value = '';
+        }
+      });
+    }
+
+    // ========== 跟手式开关初始化 ==========
+    function initDraggableSwitches() {
+      // 给所有开关绑定事件
+      const allSwitches = [
+        { el: reasoningSwitchEl, input: reasoningInputEl, key: 'deepseek_reasoning_enabled' },
+        { el: onlineSearchSwitchEl, input: onlineSearchInputEl, key: 'deepseek_online_search_enabled' }
+      ];
+
+      allSwitches.forEach(({ el, input, key }) => {
+        // 恢复保存的状态
+        const isChecked = localStorage.getItem(key) === 'true';
+        input.checked = isChecked;
+        updateSliderOffset(el, isChecked ? 22 : 0);
+
+        let isDragging = false;
+        let startX = 0;
+        let currentOffset = 0;
+        const maxOffset = 22;
+        const threshold = maxOffset / 2; // 50%阈值
+
+        // 触摸/鼠标按下事件
+        function handleStart(e) {
+          isDragging = true;
+          el.classList.add('is-dragging');
+          
+          // 获取起始坐标
+          const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+          startX = clientX;
+          currentOffset = input.checked ? maxOffset : 0;
+
+          // 阻止默认行为，避免页面滚动
+          e.preventDefault();
+        }
+
+        // 触摸/鼠标移动事件
+        function handleMove(e) {
+          if (!isDragging) return;
+          
+          // 获取当前坐标
+          const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+          const diffX = clientX - startX;
+          
+          // 计算新的偏移量，限制在0-maxOffset范围内
+          let newOffset = currentOffset + diffX;
+          newOffset = Math.max(0, Math.min(newOffset, maxOffset));
+          
+          // 实时更新滑块位置，1:1跟手
+          updateSliderOffset(el, newOffset);
+          
+          e.preventDefault();
+        }
+
+        // 触摸/鼠标松开事件
+        function handleEnd(e) {
+          if (!isDragging) return;
+          isDragging = false;
+
+          // 获取当前滑块位置，判断最终状态
+          const currentOffsetVal = getSliderOffset(el);
+          const willBeChecked = currentOffsetVal > threshold;
+          
+          // 更新checkbox状态
+          input.checked = willBeChecked;
+          // 动画回弹到最终位置
+          updateSliderOffset(el, willBeChecked ? maxOffset : 0);
+          // 保存状态到localStorage
+          localStorage.setItem(key, willBeChecked);
+          
+          // 延迟移除玻璃态，等回弹动画完成
+          setTimeout(() => {
+            el.classList.remove('is-dragging');
+          }, 200);
+
+          // 触发change事件
+          input.dispatchEvent(new Event('change'));
+          e.preventDefault();
+        }
+
+        // 点击事件（轻点切换）
+        function handleClick(e) {
+          // 如果是拖动触发的，不重复处理
+          if (isDragging) return;
+          
+          // 切换状态
+          const newChecked = !input.checked;
+          input.checked = newChecked;
+          
+          // 触发动画：先加玻璃态，再移动，再恢复
+          el.classList.add('is-dragging');
+          updateSliderOffset(el, newChecked ? maxOffset : 0);
+          localStorage.setItem(key, newChecked);
+          
+          // 动画完成后恢复白色圆形
+          setTimeout(() => {
+            el.classList.remove('is-dragging');
+          }, 300);
+
+          input.dispatchEvent(new Event('change'));
+          e.preventDefault();
+        }
+
+        // 绑定事件：手机触摸
+        el.addEventListener('touchstart', handleStart, { passive: false });
+        el.addEventListener('touchmove', handleMove, { passive: false });
+        el.addEventListener('touchend', handleEnd, { passive: false });
+        // 绑定事件：桌面鼠标
+        el.addEventListener('mousedown', handleStart, { passive: false });
+        document.addEventListener('mousemove', handleMove, { passive: false });
+        document.addEventListener('mouseup', handleEnd, { passive: false });
+        // 绑定点击事件
+        el.addEventListener('click', handleClick);
+      });
+    }
+
+    // 更新滑块偏移量
+    function updateSliderOffset(switchEl, offset) {
+      switchEl.style.setProperty('--slider-offset', `${offset}px`);
+    }
+
+    // 获取滑块当前偏移量
+    function getSliderOffset(switchEl) {
+      return parseFloat(getComputedStyle(switchEl).getPropertyValue('--slider-offset')) || 0;
+    }
+
+    // 初始化自定义下拉框
+    function initCustomDropdown() {
+      // 渲染下拉选项
+      renderDropdownOptions();
+      // 设置默认选中值
+      updateSelectedModelText();
+      // 绑定触发事件
+      dropdownTriggerEl.addEventListener('click', () => {
+        toggleDropdown(!dropdownOpen);
+      });
+    }
+
+    // 渲染下拉选项
+    function renderDropdownOptions() {
+      dropdownListEl.innerHTML = '';
       MODEL_LIST.forEach(model => {
-        const option = document.createElement('option');
-        option.value = model.value;
+        const option = document.createElement('div');
+        option.className = `dropdown-option ${model.value === selectedModel ? 'active' : ''}`;
         option.textContent = model.label;
-        modelSelectEl.appendChild(option);
+        option.dataset.value = model.value;
+        option.addEventListener('click', () => {
+          selectModel(model.value, model.label);
+        });
+        dropdownListEl.appendChild(option);
       });
-      // 默认选中第一个主模型
-      const savedModel = localStorage.getItem('deepseek_selected_model') || MODEL_LIST[0].value;
-      modelSelectEl.value = savedModel;
-      // 监听模型切换
-      modelSelectEl.addEventListener('change', () => {
-        localStorage.setItem('deepseek_selected_model', modelSelectEl.value);
-      });
+    }
+
+    // 切换下拉框显示状态
+    function toggleDropdown(show) {
+      dropdownOpen = show;
+      dropdownTriggerEl.classList.toggle('open', show);
+      dropdownPanelEl.classList.toggle('open', show);
+    }
+
+    // 选择模型
+    function selectModel(value, label) {
+      selectedModel = value;
+      localStorage.setItem('deepseek_selected_model', value);
+      updateSelectedModelText();
+      renderDropdownOptions();
+      toggleDropdown(false);
+    }
+
+    // 更新选中模型显示文本
+    function updateSelectedModelText() {
+      const selected = MODEL_LIST.find(model => model.value === selectedModel);
+      if (selected) {
+        selectedModelTextEl.textContent = selected.label;
+      }
     }
 
     // 检查登录状态
@@ -966,18 +1426,6 @@
 
     // 初始化聊天功能
     function initChatFunction() {
-      // 恢复开关状态
-      reasoningSwitchEl.checked = localStorage.getItem('deepseek_reasoning_enabled') === 'true';
-      onlineSearchSwitchEl.checked = localStorage.getItem('deepseek_online_search_enabled') === 'true';
-
-      // 开关状态保存
-      reasoningSwitchEl.addEventListener('change', () => {
-        localStorage.setItem('deepseek_reasoning_enabled', reasoningSwitchEl.checked);
-      });
-      onlineSearchSwitchEl.addEventListener('change', () => {
-        localStorage.setItem('deepseek_online_search_enabled', onlineSearchSwitchEl.checked);
-      });
-
       // 渲染对话列表
       renderChatList();
 
@@ -1019,6 +1467,10 @@
       renderChatList();
       loadChat(chatId);
       messageInputEl.focus();
+      // 新建对话清空OCR内容
+      selectedImageOCR = '';
+      attachBtnEl.classList.remove('has-ocr');
+      imageUploadEl.value = '';
       // 手机端新建对话后关闭侧边栏
       if (window.innerWidth <= 768) {
         toggleSidebar();
@@ -1049,6 +1501,10 @@
       currentChatMessages = chat.messages;
       chatTitleEl.textContent = chat.title;
       localStorage.setItem('deepseek_current_chat_id', chatId);
+      // 加载对话清空OCR内容
+      selectedImageOCR = '';
+      attachBtnEl.classList.remove('has-ocr');
+      imageUploadEl.value = '';
       renderChatMessages();
       renderChatList();
     }
@@ -1119,10 +1575,11 @@
     // 输入框变化处理
     function handleInputChange() {
       const content = messageInputEl.value.trim();
-      sendBtnEl.disabled = !content || isStreaming;
+      // 有输入内容 或 有OCR识别内容，发送按钮可用
+      sendBtnEl.disabled = (!content && !selectedImageOCR) || isStreaming;
     }
 
-    // 键盘事件（保留Shift+Enter换行，无提示）
+    // 键盘事件（保留Shift+Enter换行）
     function handleKeyDown(e) {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -1136,18 +1593,27 @@
       messageInputEl.style.height = Math.min(messageInputEl.scrollHeight, 180) + 'px';
     }
 
-    // 发送消息
+    // 发送消息（拼接OCR内容，不显示在界面）
     async function sendMessage() {
-      const content = messageInputEl.value.trim();
-      if (!content || isStreaming) return;
+      const userInputText = messageInputEl.value.trim();
+      // 至少有输入内容或OCR内容
+      if ((!userInputText && !selectedImageOCR) || isStreaming) return;
 
       // 重置输入框
       messageInputEl.value = '';
       autoResizeTextarea();
       sendBtnEl.disabled = true;
 
-      // 添加用户消息
-      const userMessage = { role: 'user', content };
+      // 界面上只显示用户输入的文本，不显示OCR内容
+      const showUserContent = userInputText || '【图片提问】';
+      // 发给API的内容，拼接用户输入+OCR提取的文字
+      let sendContent = userInputText;
+      if (selectedImageOCR) {
+        sendContent += `\n\n【用户上传图片提取的文字内容：\n${selectedImageOCR}\n】`;
+      }
+
+      // 添加用户消息到界面和本地记录（仅显示用户输入的内容）
+      const userMessage = { role: 'user', content: showUserContent };
       currentChatMessages.push(userMessage);
       updateCurrentChat();
       renderChatMessages();
@@ -1172,11 +1638,15 @@
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: modelSelectEl.value, // 使用选中的模型
-            messages: currentChatMessages.slice(0, -1),
+            model: selectedModel,
+            // 发给API的消息使用拼接了OCR内容的完整文本
+            messages: [
+              ...currentChatMessages.slice(0, -2),
+              { role: 'user', content: sendContent }
+            ],
             stream: true,
-            enable_online_search: onlineSearchSwitchEl.checked,
-            reasoning_effort: reasoningSwitchEl.checked ? 'medium' : 'none'
+            enable_online_search: onlineSearchInputEl.checked,
+            reasoning_effort: reasoningInputEl.checked ? 'medium' : 'none'
           }),
           signal: abortController.signal,
         });
@@ -1225,6 +1695,10 @@
       } finally {
         isStreaming = false;
         abortController = null;
+        // 发送完成后清空OCR内容和状态
+        selectedImageOCR = '';
+        attachBtnEl.classList.remove('has-ocr');
+        imageUploadEl.value = '';
         updateCurrentChat();
         handleInputChange();
       }
@@ -1239,10 +1713,11 @@
       }
     }
 
-    // 更新对话标题
-    async function updateChatTitle() {
+    // ========== 已修改：对话标题使用用户发送的第一句话完整内容 ==========
+    function updateChatTitle() {
       if (currentChatMessages.length < 1) return;
-      const firstMessage = currentChatMessages[0].content.slice(0, 20);
+      // 直接使用用户发送的第一条消息的完整内容作为标题，不再截断
+      const firstMessage = currentChatMessages[0].content;
       const chatIndex = chatList.findIndex(c => c.id === currentChatId);
       if (chatIndex !== -1) {
         chatList[chatIndex].title = firstMessage;
